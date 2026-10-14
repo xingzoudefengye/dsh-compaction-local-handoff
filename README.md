@@ -39,11 +39,13 @@ DSH 默认的 `@deepseek-ai/dsh-compaction-basic` 在上下文到达阈值后：
 
 ## 安装
 
-用 DSH 自带的插件管理器（会把本仓库作为 bundle 装进 profile）：
+用 DSH 自带的插件管理器（会把本仓库作为 bundle 装进 profile；实测该命令会同时写入 `dependencies` 和 `dsh.profile.bundles`）：
 
 ```bash
-dsh plugin --profile web install github:xingzoudefengye/dsh-compaction-local-handoff
+dsh plugin --profile web add github:xingzoudefengye/dsh-compaction-local-handoff
 ```
+
+装完需要重启该 profile 的 app（新增模块根不在 HMR 热重载范围内）才能生效。
 
 或手工两步：
 
@@ -52,7 +54,7 @@ cd ~/.dsh/profiles/web
 pnpm add github:xingzoudefengye/dsh-compaction-local-handoff
 ```
 
-然后把包加入 `package.json` 的 `dsh.profile.bundles`（`dsh plugin install` 会自动做这一步）：
+然后把包加入 `package.json` 的 `dsh.profile.bundles`：
 
 ```json
 "dsh": { "profile": { "bundles": [
@@ -62,24 +64,40 @@ pnpm add github:xingzoudefengye/dsh-compaction-local-handoff
 ] } }
 ```
 
-本仓库自带的 `cordis.patch.yml` 会在它这一层：
+### 为什么 `cordis.patch.yml` 是生成出来的
 
-```yaml
-- id: compaction-basic
-  disabled: true
+压缩后端在 profile 里被挂了**两层**，只改一层是不够的：
 
-- insert:
-    - id: compaction-local-handoff
-      name: 'dsh-compaction-local-handoff'
+1. **profile 根**——`dsh-base` 直接挂了一行 `compaction-basic`；`preset-minimal` 这类没有自己压缩组的 preset 继承的就是它。
+2. **每个 agent preset 内部的隔离压缩组**——`preset-standard` / `preset-ptc` / `preset-cordis` 各自带一个 `cordis:group`，带 `isolate: {compaction: true}`，里面又挂了一份 `compaction-basic`。**正常 GUI 会话跑在 preset 下，用的是这一份。**
+
+第 2 层无法用普通的按 id patch 命中：preset 行的 `config.plugins` 是**数据**，交给 `@deepseek-ai/dsh-agent-preset-registry` 注册后才在 agent 自己的 scope 里挂载，而 loader 的 `applyEntryPatches` 只下钻 `group: true` 的行（preset 行不是）。
+
+所幸 registry 的文档给了官方做法——"A new preset or an override of a shipped one is a bundle patch: an `insert` of a `@deepseek-ai/dsh-agent-preset` row, **or a patch keyed by that row's id**"。所以 `cordis.patch.yml` 由 `scripts/sync-presets.mjs` 生成：从 `dsh --profile web --dump-default-config` 取出带压缩组的 preset 行，**逐字复制**，只把那两行 `compaction-basic` 换成 `compaction-local-handoff`，其余（persona、plan-mode、delegation……）保持原样。
+
+代价要说清楚：这意味着这些 preset 清单在你的 profile 里被**冻结**在生成时的那一版。harness 升级若改动了 shipped preset（新增工具、调整 prompt 段），你不会自动拿到，需要：
+
+```bash
+npm run sync:presets      # 重新生成
+npm run check:presets     # 检查是否已过期（不一致时非零退出）
 ```
 
-因为 bundle 层在 base 之后应用，这个 `disabled` 会覆盖 base 里的 `compaction-basic` 行。
+生成器对上游 YAML 形状是**硬编码**的（10 空格缩进、`- id: compaction-basic` + `name:` 两行），形状一变就抛错要求更新，不会静默生成错误的东西。
 
 ## 验证
 
-- 装好后跑 `/compact`：压缩记录里 `provider/model` 会显示 `local / local-handoff`，且会话日志里**没有** `purpose: "compaction"` 的模型调用。
-- 或者看日志：压缩日志行仍是 `compaction (step pressure): shadowed N surface nodes ...`。
-- 想确认当前生效的是哪个后端，看 profile 的插件页 / `dsh plugin --profile web list`。
+已经在本机真机验证过（一次性 profile + 小窗口强制触发压缩）：
+
+- 会话日志里出现 `compaction/summary`，`provider: "local"`、`model: "local-handoff"`；
+- `compaction/start` → `compaction/summary` 间隔 **2 毫秒**，不存在摘要模型调用；
+- 交接文本里的"最新用户要求"是**真用户指令**，不是被注入的 `<system-reminder>`；
+- 反复压缩时上一次交接被当**数据合并**（最多一条 `上次交接携带的文件（可能已过时）`），不会层层嵌套。
+
+自己验证：
+
+- 在 GUI 里跑 `/compact`：压缩记录显示 `local / local-handoff`，且没有 `purpose: "compaction"` 的模型调用。
+- 日志行不变：`compaction (step pressure): shadowed N surface nodes ...`。
+- 想在隔离环境里试：`dsh plugin --profile <新profile> add <本仓库绝对路径>`，再用小窗口强制触发（见本仓库的测试做法）。
 
 ## 回滚
 
@@ -101,7 +119,9 @@ pnpm add github:xingzoudefengye/dsh-compaction-local-handoff
 ## 已知限制
 
 - **交接是"有界交接"，不是"智能摘要"。** 较早的决策理由、失败过的方案、跨文件的推理不会自动保留 —— 与 ComeCode 的取舍一致。完整原文仍在会话日志里，但 **DSH 目前没有暴露给模型的"读历史"工具**（ComeCode 有 `ReadSessionContext`），所以模型只能靠重新读文件或重跑命令来恢复细节。
-- **极短历史下会拒绝压缩。** 后端要求检查点必须小于被遮蔽的内容，而 DSH 会给每条检查点加一段固定 preamble；区间太短时压缩会报 `summary is not smaller than the shadowed content`。这与默认后端的行为一致。
+- **preset 清单被冻结。** 见上文"为什么 `cordis.patch.yml` 是生成出来的"：harness 升级改动 shipped preset 后需要重新跑 `npm run sync:presets`。
+- **极短历史下会拒绝压缩。** 后端要求检查点必须小于被遮蔽的内容，而 DSH 会给每条检查点加一段固定 preamble（约 350 字符）；被遮蔽区间小于约 100 token 时无法再压，压缩会报 `summary is not smaller than the shadowed content`。这与默认后端的行为一致，且是非致命的（自动路径记一条警告后继续本轮）。
+- **窗口贴着固定前缀时会反复压缩。** 阈值是 `min(W×0.8, W−O−headroom)`，而 system prompt + 工具 schema 是不可压缩的固定前缀。如果 `W` 只比前缀大一点（例如把 512K 调到 12K 做测试），每个 step 都会越过阈值、反复触发压缩。这是上游阈值策略的固有行为，不是本插件引入的；真实窗口下不会出现。
 - 单条不可分单元（一次超大工具调用）仍无法被压缩。
 - 图片内容不进入交接：只保留文本块。
 
