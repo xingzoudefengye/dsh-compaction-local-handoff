@@ -86,12 +86,26 @@ npm run check:presets     # 检查是否已过期（不一致时非零退出）
 
 ## 验证
 
-已经在本机真机验证过（一次性 profile + 小窗口强制触发压缩）：
+已经在本机真机验证过，**两条挂载路径都跑通了**。
 
-- 会话日志里出现 `compaction/summary`，`provider: "local"`、`model: "local-handoff"`；
-- `compaction/start` → `compaction/summary` 间隔 **2 毫秒**，不存在摘要模型调用；
-- 交接文本里的"最新用户要求"是**真用户指令**，不是被注入的 `<system-reminder>`；
-- 反复压缩时上一次交接被当**数据合并**（最多一条 `上次交接携带的文件（可能已过时）`），不会层层嵌套。
+**preset 路径（GUI 正常会话走的就是这条）**——在一个 `agentPreset: "standard"` 的 web 会话里执行 `/compact`，会话日志：
+
+```
+17:53:57.134  compaction/start
+17:53:57.145  compaction/summary   provider=local  model=local-handoff
+              shadowedRange 8-61 · 21 nodes · 5713 tokens
+              llmStreamCall=无 · rawOutput=无 · usage=无 · maxTokens=无
+```
+
+11 毫秒完成，且摘要事件不带 `llmStreamCall` / `usage` / `maxTokens` —— 模型摘要路径一定会带这三者，所以这确实是一次纯本地压缩。节点数与 token 数同界面报告的"已压缩 21 条历史记录（约 5713 tokens）"一致。
+
+**根路径**——一次性 profile + 小窗口强制触发自动压缩（`compaction (step pressure)`），同样得到 `provider: "local"`、`model: "local-handoff"`，`compaction/start` → `compaction/summary` 间隔 2 毫秒。
+
+同时验证到的行为：
+
+- 交接里的"最新用户要求"是**真用户指令**，不是被注入的 `<system-reminder>`（技能目录 / AGENTS.md / 运行时上下文）；
+- 反复压缩时上一次交接被当**数据合并**（最多一条 `上次交接携带的文件（可能已过时）`），不会层层嵌套；
+- 被遮蔽区间变小时交接跟着变小，能通过后端的"必须比源内容更小"检查。
 
 自己验证：
 
