@@ -23,7 +23,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "sync:presets": "node scripts/sync-presets.mjs",
+    "check:presets": "node scripts/sync-presets.mjs --check"
   },
   "dsh": {
     "bundle": {

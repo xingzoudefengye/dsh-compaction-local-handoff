@@ -65,3 +65,20 @@ test("propagates cancellation before doing any work", { skip }, async () => {
 
 	await assert.rejects(() => engine.summarize({ messages: [] }, undefined, signal), /cancelled by test/);
 });
+
+test("sizes the handoff from shadowed history, not the replayed system head", { skip }, async () => {
+	const { LocalHandoffCompactionEngine } = plugin;
+	const engine = Object.create(LocalHandoffCompactionEngine.prototype);
+	// The replayed head is the current prompt: it is never shadowed, so it must not
+	// buy the handoff a bigger budget than the span it replaces.
+	const head = { role: "system", content: [{ type: "text", text: "S".repeat(50_000) }] };
+	const region = [];
+	for (let index = 0; index < 8; index += 1)
+		region.push({ role: "user", content: [{ type: "text", text: `段落 ${index} `.repeat(60) }], source: { kind: "user" } });
+
+	const out = await engine.summarize({ messages: [head, ...region] }, undefined, undefined);
+	const text = out.summary[0].text;
+
+	assert.ok(text.length <= 2_000, `handoff was ${text.length} characters for a ~2,400-character span`);
+	assert.match(text, /段落 7/);
+});
