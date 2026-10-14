@@ -1,0 +1,67 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+// The engine module only loads when the real peer dependency resolves, so the
+// suite still passes in a bare checkout; scripts/dev-link.sh wires it up.
+let plugin = null;
+let base = null;
+try {
+	plugin = await import("../lib/index.js");
+	base = await import("@deepseek-ai/dsh-compaction-basic");
+} catch {
+	plugin = null;
+}
+
+const skip = plugin === null ? "peer dependency @deepseek-ai/dsh-compaction-basic is not resolvable" : false;
+
+test("subclasses the published engine without redeclaring its policy", { skip }, () => {
+	const { LocalHandoffCompactionEngine, LOCAL_MODEL, LOCAL_PROVIDER } = plugin;
+	assert.ok(LocalHandoffCompactionEngine.prototype instanceof base.BasicCompactionEngine);
+	assert.deepEqual(LocalHandoffCompactionEngine.inject, ["llm", "tokenMeter", "sessions"]);
+	assert.equal(LocalHandoffCompactionEngine.Config, base.BasicCompactionEngine.Config);
+	assert.equal(LOCAL_PROVIDER, "local");
+	assert.equal(LOCAL_MODEL, "local-handoff");
+});
+
+test("returns the summary blocks and provider record the backend expects", { skip }, async () => {
+	const { LocalHandoffCompactionEngine, LOCAL_MODEL, LOCAL_PROVIDER } = plugin;
+	// Only `summarize()` is exercised, so a prototype-only instance avoids
+	// needing a cordis Context.
+	const engine = Object.create(LocalHandoffCompactionEngine.prototype);
+	const input = {
+		tools: [{ name: "Read" }],
+		messages: [
+			{ role: "system", content: [{ type: "text", text: "You are a coding agent." }] },
+			{ role: "user", content: [{ type: "text", text: "把 timeout 改成 30 秒。" }] },
+			{
+				role: "assistant",
+				content: [{ type: "tool-call", id: "c1", name: "Read", arguments: '{"file_path":"/repo/src/config.ts"}' }]
+			},
+			{
+				role: "tool",
+				source: { kind: "tool", callId: "c1" },
+				content: [{ type: "text", text: "export const timeoutMs = 5000;" }],
+				isError: false
+			}
+		]
+	};
+
+	const out = await engine.summarize(input, undefined, undefined);
+
+	assert.equal(out.provider, LOCAL_PROVIDER);
+	assert.equal(out.model, LOCAL_MODEL);
+	assert.ok(Array.isArray(out.summary));
+	assert.equal(out.summary.length, 1);
+	assert.equal(out.summary[0].type, "text");
+	assert.match(out.summary[0].text, /把 timeout 改成 30 秒/);
+	assert.match(out.summary[0].text, /\/repo\/src\/config\.ts/);
+	assert.ok(!out.summary[0].text.includes("You are a coding agent"), "the replayed system head is not history");
+});
+
+test("propagates cancellation before doing any work", { skip }, async () => {
+	const { LocalHandoffCompactionEngine } = plugin;
+	const engine = Object.create(LocalHandoffCompactionEngine.prototype);
+	const signal = AbortSignal.abort(new Error("cancelled by test"));
+
+	await assert.rejects(() => engine.summarize({ messages: [] }, undefined, signal), /cancelled by test/);
+});

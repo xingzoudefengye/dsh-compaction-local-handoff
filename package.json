@@ -1,0 +1,51 @@
+{
+  "name": "dsh-compaction-local-handoff",
+  "version": "0.1.0",
+  "description": "Model-free local-handoff compaction backend for DeepSeek Harness: replaces model summarization with a bounded, deterministic handoff.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./handoff": {
+      "types": "./lib/types/handoff.d.ts",
+      "default": "./lib/handoff.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-compaction-basic": ">=0.2.0-rc.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "compaction",
+    "context",
+    "plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xingzoudefengye/dsh-compaction-local-handoff.git"
+  },
+  "license": "MIT"
+}

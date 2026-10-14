@@ -1,0 +1,17 @@
+# dsh-compaction-local-handoff bundle patch.
+#
+# Applied after the base and app bundle layers, so this file's `disabled` for the
+# model-backed backend wins over the base's row.
+#
+# The replacement keeps the whole compaction contract -- trigger threshold,
+# verbatim retention window, tool-pairing-safe region selection, the durable
+# compaction transaction and lock, context-overflow recovery, and `/compact`.
+# Only `summarize()` differs: the checkpoint is assembled locally instead of
+# being written by a summarization model.
+
+- id: compaction-basic
+  disabled: true
+
+- insert:
+    - id: compaction-local-handoff
+      name: 'dsh-compaction-local-handoff'
