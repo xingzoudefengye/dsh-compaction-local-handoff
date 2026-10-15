@@ -75,16 +75,18 @@ pnpm add github:xingzoudefengye/dsh-compaction-local-handoff
 
 第 2 层无法用普通的按 id patch 命中：preset 行的 `config.plugins` 是**数据**，交给 `@deepseek-ai/dsh-agent-preset-registry` 注册后才在 agent 自己的 scope 里挂载，而 loader 的 `applyEntryPatches` 只下钻 `group: true` 的行（preset 行不是）。
 
-所幸 registry 的文档给了官方做法——"A new preset or an override of a shipped one is a bundle patch: an `insert` of a `@deepseek-ai/dsh-agent-preset` row, **or a patch keyed by that row's id**"。所以 `cordis.patch.yml` 由 `scripts/sync-presets.mjs` 生成：从 `dsh --profile web --dump-default-config` 取出带压缩组的 preset 行，**逐字复制**，只把那两行 `compaction-basic` 换成 `compaction-local-handoff`，其余（persona、plan-mode、delegation……）保持原样。
+所幸 registry 的文档给了官方做法——"A new preset or an override of a shipped one is a bundle patch: an `insert` of a `@deepseek-ai/dsh-agent-preset` row, **or a patch keyed by that row's id**"。所以 `cordis.patch.yml` 由 `scripts/sync-presets.mjs` 生成：读**官方发布的 manifest 文件** `@deepseek-ai/dsh-web-app/presets/*.patch.yml`，**逐字复制**，只把那两行 `compaction-basic` 换成 `compaction-local-handoff`，其余（persona、plan-mode、delegation……）保持原样。
+
+来源必须是 manifest 文件，**不能**是 `dsh --dump-default-config`：这个 bundle 自己就是一个 bundle，等 dump 渲染出来时它自己的补丁已经生效了 —— 读 dump 等于读本文件的输出，于是 `check:presets` 拿文件和自己比，永远失败（"no preset with a compaction group found"）。一个**永远不可能通过**的漂移守卫比没有更糟，因为它看起来像保护。
 
 代价要说清楚：这意味着这些 preset 清单在你的 profile 里被**冻结**在生成时的那一版。harness 升级若改动了 shipped preset（新增工具、调整 prompt 段），你不会自动拿到，需要：
 
 ```bash
 npm run sync:presets      # 重新生成
-npm run check:presets     # 检查是否已过期（不一致时非零退出）
+npm run check:presets     # 检查是否已过期（不一致时非零退出，并打印第一处差异）
 ```
 
-生成器对上游 YAML 形状是**硬编码**的（10 空格缩进、`- id: compaction-basic` + `name:` 两行），形状一变就抛错要求更新，不会静默生成错误的东西。
+生成器对上游 YAML 形状是**硬编码**的（`- insert:` 包装 + 4 空格缩进、`- id: compaction-basic` + `name:` 两行），形状一变就抛错要求更新，不会静默生成错误的东西。
 
 ## 验证
 

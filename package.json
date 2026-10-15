@@ -1,6 +1,6 @@
 {
   "name": "dsh-compaction-local-handoff",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Model-free local-handoff compaction backend for DeepSeek Harness: replaces model summarization with a bounded, deterministic handoff.",
   "type": "module",
   "main": "lib/index.js",
