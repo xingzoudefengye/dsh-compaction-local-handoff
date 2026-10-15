@@ -82,3 +82,48 @@ test("sizes the handoff from shadowed history, not the replayed system head", { 
 	assert.ok(text.length <= 2_000, `handoff was ${text.length} characters for a ~2,400-character span`);
 	assert.match(text, /段落 7/);
 });
+
+test("includes the chronicle service's text when the recall bundle is installed", { skip }, async () => {
+	const { LocalHandoffCompactionEngine } = plugin;
+	const engine = Object.create(LocalHandoffCompactionEngine.prototype);
+	let requested = null;
+	engine.ctx = {
+		get: (name) =>
+			name === "sessionChronicle"
+				? {
+						render: (session, options) => {
+							requested = options;
+							return "会话史书：\n- #1 09:00 回合完成；目标：建立基线；回复：基线已建立";
+						}
+					}
+				: undefined
+	};
+
+	const out = await engine.summarize(
+		{ messages: [{ role: "user", content: [{ type: "text", text: "继续。" }], source: { kind: "user" } }] },
+		{ session: { snapshotEvents: () => [] } },
+		undefined
+	);
+
+	assert.match(out.summary[0].text, /回合级史书/);
+	assert.match(out.summary[0].text, /回复：基线已建立/);
+	assert.ok(requested !== null && Number.isFinite(requested.maxChars), "the chronicle is asked for a bounded render");
+});
+
+test("an unavailable or failing chronicle never breaks compaction", { skip }, async () => {
+	const { LocalHandoffCompactionEngine } = plugin;
+	const input = { messages: [{ role: "user", content: [{ type: "text", text: "继续。" }], source: { kind: "user" } }] };
+
+	for (const ctx of [
+		undefined,
+		{ get: () => undefined },
+		{ get: () => ({ render: () => { throw new Error("chronicle exploded"); } }) },
+		{ get: () => ({ render: () => 42 }) }
+	]) {
+		const engine = Object.create(LocalHandoffCompactionEngine.prototype);
+		engine.ctx = ctx;
+		const out = await engine.summarize(input, { session: {} }, undefined);
+		assert.ok(out.summary[0].text.length > 0);
+		assert.ok(!out.summary[0].text.includes("回合级史书"));
+	}
+});

@@ -67,6 +67,22 @@ test("keeps in-history system updates as sourced constraints", () => {
 	assert.match(summary, /禁止使用 any 类型/);
 });
 
+test("folds the session chronicle into the checkpoint when one is supplied", () => {
+	const chronicle = "会话史书（本地生成，未调用模型）：2/2 条回合记录\n- #1 09:00 回合完成；目标：先建立基线；回复：基线已建立\n- #2 09:10 回合进行中；目标：修超时";
+	const withChronicle = buildLocalHandoff([head(), user("继续修。"), assistant("正在改。")], { chronicle });
+	const withoutChronicle = buildLocalHandoff([head(), user("继续修。"), assistant("正在改。")]);
+
+	assert.match(withChronicle.summary, /回合级史书（本地折叠，含更早回合的结论）/);
+	assert.match(withChronicle.summary, /回复：基线已建立/, "an earlier turn's conclusion survives the checkpoint");
+	assert.ok(!withoutChronicle.summary.includes("回合级史书"), "absent service means unchanged behaviour");
+
+	const capped = buildLocalHandoff([head(), user("继续修。"), assistant("正在改。")], {
+		chronicle: "x".repeat(9_000),
+		maxChars: 3_000
+	});
+	assert.ok(capped.text.length <= 3_000, `handoff was ${capped.text.length} characters`);
+});
+
 test("never mistakes a runtime-injected user message for the request", () => {
 	const { guide, summary } = buildLocalHandoff([
 		head(),
