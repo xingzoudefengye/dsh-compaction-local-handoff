@@ -1,0 +1,4 @@
+# 跨平台换行：仓库里全部存 LF。Windows 上 core.autocrlf 会把工作区转成
+# CRLF，而 check:presets 是逐字节比较生成文件，曾经因此在 Windows 上误报
+# “已过期”。eol=lf 让两边检出一致；比较本身也做了 \r\n 归一化，双保险。
+* text=auto eol=lf
