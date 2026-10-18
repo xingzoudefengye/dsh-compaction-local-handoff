@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 // The engine module only loads when the real peer dependency resolves, so the
-// suite still passes in a bare checkout; scripts/dev-link.sh wires it up.
+// suite still passes in a bare checkout; scripts/dev-link.mjs wires it up.
 let plugin = null;
 let base = null;
 try {

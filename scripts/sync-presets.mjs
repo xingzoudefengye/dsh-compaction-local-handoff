@@ -276,7 +276,7 @@ export function buildOutput(presetsDir) {
 		"# See scripts/sync-presets.mjs for why the presets must be restated.",
 		"#",
 		"# The profile root keeps a model-free backend too, which is what presets without",
-		"# their own compaction group (for example `preset-minimal`) inherit.",
+		"# their own compaction group inherit.",
 		"",
 		"# Profile root: replace the model-backed summarizer.",
 		"- id: compaction-basic",
