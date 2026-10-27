@@ -1,0 +1,5 @@
+{
+  "meta": {
+    "description": "Model-free local-handoff compaction backend for DeepSeek Harness: replaces model summarization with a bounded, deterministic handoff."
+  }
+}

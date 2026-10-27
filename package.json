@@ -14,7 +14,8 @@
       "default": "./lib/handoff.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*": "./locale/*"
   },
   "files": [
     "lib",
@@ -22,7 +23,8 @@
     "scripts/sync-presets.mjs",
     "scripts/dev-link.mjs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "locale"
   ],
   "scripts": {
     "test": "node --test",
